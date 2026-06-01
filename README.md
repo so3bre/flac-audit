@@ -1,4 +1,4 @@
-# FLAC-Audit 🎵
+# FLAC Audit 🎵
 
 A professional command-line tool to verify FLAC file integrity and generate high-fidelity spectrograms for audio analysis.
 
@@ -41,6 +41,18 @@ The script requires the following tools to be installed on your system:
 
 2. **Configure:**
 By default, icon branding is enabled (CREATE_DESKTOP_ICON=true). If you prefer to disable it, open flac-audit.sh and set CREATE_DESKTOP_ICON=false.
+
+## Preview
+
+Check out how FLAC-Audit visualizes your audio quality and organizes reports:
+
+| Usage Demo | Audit Folder |
+| :---: | :---: |
+| [![Usage](assets/screenshots/usage-demo.png)](assets/screenshots/usage-demo.png) | [![Output](assets/screenshots/audit-folder.png)](assets/screenshots/audit-folder.png) |
+
+| Spectrograms Folder | Spectrogram Preview |
+| :---: | :---: |
+| [![Folder](assets/screenshots/spectrograms-folder.png)](assets/screenshots/spectrograms-folder.png) | [![Preview](assets/screenshots/spectrogram-preview.png)](assets/screenshots/spectrogram-preview.png) |
 
 ## Usage
 
