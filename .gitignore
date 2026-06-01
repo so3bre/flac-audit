@@ -1,0 +1,4 @@
+*.log
+.directory
+.icon.png
+flac-audit/
