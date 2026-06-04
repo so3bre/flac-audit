@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$SCRIPT_DIR/VERSION" ] && VERSION=$(cat "$SCRIPT_DIR/VERSION") || VERSION="1.0.0"
 
 CLEAN_METADATA=true
-CREATE_DESKTOP_ICON=true # Set "false" to disable .directory branding
+CREATE_DESKTOP_ICON=false # Set "false" to disable .directory branding
 REPO_LINK="https://github.com/so3bre/flac-audit"
 ICON_CREDIT="Credits: Icon by Freepik from Flaticon"
 
@@ -24,15 +24,26 @@ for tool in flac ffmpeg exiftool; do
 done
 
 # Main processing loop
-find . -type f -iname "*.flac" -print0 | xargs -0 dirname | sort -u | while read -r album_folder; do
-    # Get full path and extract basename to avoid issues with "."
-    real_album_path=$(cd "$album_folder" && pwd)
-    album_name=$(basename "$real_album_path")
+# Start from current directory
+# If there are .flac files in the current folder, treat it as one album
+if find . -maxdepth 1 -type f -iname "*.flac" | grep -q ".flac"; then
+    echo "."
+else
+    find . -type f -iname "*.flac" -printf "%h\n" | sort -u
+fi | while read -r album_folder; do
+    # Remove leading ./ if present
+    album_folder="${album_folder#./}"
+
+    # Clean path for current directory case
+    [ "$album_folder" = "." ] && album_folder=""
+
+    # Get absolute path
+    real_album_path="$PWD${album_folder:+/$album_folder}"
+    album_name="$(basename "$real_album_path")"
 
     # Define audit folder and ensure it exists
     audit_dir="$real_album_path/flac-audit"
     mkdir -p "$audit_dir"
-
     spec_dir="$audit_dir/spectrograms"
     mkdir -p "$spec_dir"
 
@@ -72,25 +83,47 @@ find . -type f -iname "*.flac" -print0 | xargs -0 dirname | sort -u | while read
     # Display status in console
     echo -e "\n${CLR_B}>>> Analyzing Album:${CLR_NC} $album_name"
 
-    shopt -s nocaseglob
-    for file in "$album_folder"/*.flac; do
-        shopt -u nocaseglob
-        [ -e "$file" ] || continue
+    # Get all flac files into an array using null-delimited find output
+    # This handles any filenames with spaces, newlines, or special characters
+    files=()
+    while IFS= read -r -d '' file; do
+        files+=("$file")
+    done < <(find -P "$real_album_path" -type f -iname "*.flac" -print0 | sort -z -V)
 
-        if flac -t "$file" >/dev/null 2>&1; then
+for file in "${files[@]}"; do
+        # Capture all output from flac
+        output=$(flac -t -- "$file" 2>&1)
+
+        # Check if output contains "ERROR"
+        if echo "$output" | grep -q "ERROR"; then
+            err_msg=$(echo "$output" | grep "ERROR" | sed 's/.*ERROR, //')
+
+            # Bash error output
+            echo -e "    ${CLR_R}ERROR:${CLR_NC} $(basename "$file")"
+            echo -e "    ${CLR_R}  └──> details:${CLR_NC} $err_msg"
+
+            # Log error output
+            echo "ERROR: $(basename "$file")" >> "$log_file"
+            printf "└────> %s\n" "$err_msg" >> "$log_file"
+        else
             echo -e "    ${CLR_G}OK:${CLR_NC} $(basename "$file")"
             echo "OK: $(basename "$file")" >> "$log_file"
 
             base_name=$(basename "${file%.*}")
             spec_path="$spec_dir/$base_name.png"
-            ffmpeg -y -i "$file" -lavfi "showspectrumpic=size=640x480:mode=separate:color=intensity:scale=log:stop=22000:drange=80" "$spec_path" >/dev/null 2>&1
 
+            # Capture error from ffmpeg if it fails
+            ffmpeg_err=$(ffmpeg -y -i "$file" -lavfi "showspectrumpic=size=640x480:mode=separate:color=intensity:scale=log:stop=22000:drange=80" "$spec_path" 2>&1 >/dev/null)
+
+            if [ $? -ne 0 ]; then
+                printf "    ${CLR_R}FFMPEG ERROR:${CLR_NC} %s - %s\n" "$(basename "$file")" "$ffmpeg_err"
+                printf "FFMPEG ERROR: %s - %s\n" "$(basename "$file")" "$ffmpeg_err" >> "$log_file"
+            fi
+
+            # Clean metadata from the generated spectrogram image
             if [ "$CLEAN_METADATA" = true ]; then
                 exiftool -all= -tagsfromfile @ -all:all -unsafe -PNG:all= -overwrite_original "$spec_path" >/dev/null 2>&1
             fi
-        else
-            echo -e "    ${CLR_R}ERROR:${CLR_NC} $(basename "$file")"
-            echo "ERROR: $(basename "$file")" >> "$log_file"
         fi
     done
 
